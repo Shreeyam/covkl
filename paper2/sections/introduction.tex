@@ -1,0 +1,28 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Joint-embedding self-supervised learning (SSL) methods learn representations by making features invariant to augmentations while preventing collapse to a constant. Collapse prevention has produced a proliferation of mechanisms: contrastive losses with negatives \citep{chen2020simclr}, momentum teachers with prototype softmax \citep{caron2021emerging, oquab2023dinov2}, stop-gradient predictors \citep{grill2020byol, chen2021simsiam}, and \emph{statistical} regularization of the batch feature distribution \citep{bardes2022vicreg, zbontar2021barlow, wu2025simdino}.
+
+We focus on the last family---often called \emph{flat-space} SSL because it operates on unnormalized features in $\R^d$ rather than the unit hypersphere. In this setting collapse is prevented by constraining the second-order moments of the batch feature matrix $\mat{Z} \in \R^{n \times d}$: the diagonal of the covariance $\mat{C} = \tfrac{1}{n}(\mat{Z} - \bar{\vect{z}})^\top(\mat{Z} - \bar{\vect{z}})$ is pushed toward one, and the off-diagonal is pushed toward zero. VICReg \citep{bardes2022vicreg} uses a one-sided variance hinge and the Frobenius norm of the off-diagonal covariance; Barlow Twins \citep{zbontar2021barlow} penalizes the diagonal of the cross-view cross-correlation toward one and its off-diagonal toward zero; SimDINO \citep{wu2025simdino} uses a coding-rate expansion \citep{yu2020mcr2, ma2007segmentation} of the correlation matrix, paired with a two-sided variance penalty (SigReg) \citep{schaeffer2024sigreg}. All three work. None derives its two ingredients from a single underlying object.
+
+This paper argues that a single object underlies all of them. Let $\mat{C}$ be the (centered, shrinkage-regularized) batch covariance. The second-order Kullback--Leibler divergence of the batch feature distribution to an isotropic Gaussian target is
+\begin{equation}
+\label{eq:intro_covkl}
+    \mathcal{L}_\text{covKL}(\mat{Z}) \;=\; \tfrac{1}{2}\Bigl(\tr(\mat{C}) \;-\; \logdet(\mat{C}) \;-\; d\Bigr),
+\end{equation}
+which equals $\mathrm{KL}(\mathcal{N}(\vect{0}, \mat{C}) \,\|\, \mathcal{N}(\vect{0}, \mat{I}_d))$ for Gaussian $\mat{Z}$. We show three things.
+
+\begin{enumerate}
+    \item \textbf{$\mathcal{L}_\text{covKL}$ unifies the split recipes.} The decomposition $\tr(\mat{C}) - \logdet(\mat{C}) - d = \sum_j(\sigma_j^2 - 2\log\sigma_j - 1) - \logdet(\mat{R})$ exposes its per-dimension scale term and its correlation structure term. The scale term is a strict generalization of SigReg's $(\sigma_j-1)^2$ (matching at leading order near $\sigma_j=1$, diverging at $\sigma_j \to 0$ where SigReg merely gives a constant penalty). The correlation term is $-\logdet(\mat{R})$, which has an unbounded barrier against directional collapse that coding-rate's $\tfrac{1}{2}\logdet(\mat{I}_d + \tfrac{d}{\varepsilon^2}\mat{R})$ lacks.
+    \item \textbf{$\mathcal{L}_\text{covKL}$ has a unique minimum at $\mat{C} = \mat{I}$.} Coding-rate expansions are monotone in spread---they have no minimum---and therefore require a separate scale anchor. $\mathcal{L}_\text{covKL}$ combines the anti-collapse $-\logdet$ pressure with the scale-pulling $\tr$ pressure, so scale and structure balance at the natural equilibrium $\mat{C} = \mat{I}$ without any additional terms.
+    \item \textbf{A minimal CovKL training recipe is competitive with VICReg.} Combined with a standard MSE invariance loss and a mean penalty,
+    \begin{equation}
+    \label{eq:intro_loss}
+        \mathcal{L} \;=\; \lambda_\text{align}\|\vect{s}_1 - \vect{s}_2\|^2 \;+\; \lambda_\mu \|\bar{\vect{z}}\|^2/d \;+\; \lambda_C\,\mathcal{L}_\text{covKL},
+    \end{equation}
+    CovKL matches or exceeds VICReg's $k$-NN accuracy on CIFAR-10 at the same compute budget, with fewer explicit hyperparameters governing the regularizer family (no separate scale weight, no coding-rate $\varepsilon$).
+\end{enumerate}
+
+The practical implications are modest---CovKL is within a point or two of VICReg on a well-tuned benchmark, not a category shift. The conceptual implications are the point: the scale-control and decorrelation terms that every flat-space SSL method has been carrying around as separate ingredients are the two pieces of a single KL divergence, and training directly on the unified object works at least as well as training on approximations of it.
+
+The paper is organized as follows. \secref{sec:related_work} reviews flat-space SSL methods and the rate-distortion / coding-rate literature they draw on. \secref{sec:method} formalizes $\mathcal{L}_\text{covKL}$, derives the decomposition relating it to existing recipes, and gives the training procedure. Experimental validation is forthcoming; preliminary CIFAR-10 numbers are summarized in \secref{sec:method} where relevant.

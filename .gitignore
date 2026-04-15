@@ -1,0 +1,36 @@
+# Large artifacts
+data/
+checkpoints/
+runs/
+results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.toc
+*.nav
+*.snm
+*.vrb
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
+# Compiled paper PDFs (source .tex is tracked; PDFs are build artifacts)
+paper/*.pdf
+paper2/template.pdf
+collisions_analysis/collisions.pdf
+collisions_analysis/collisions2.pdf
+collisions_analysis/merged.pdf

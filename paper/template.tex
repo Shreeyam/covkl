@@ -1,0 +1,105 @@
+\documentclass{article}
+
+\usepackage{arxiv}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage[numbers]{natbib}
+\usepackage{doi}
+\usepackage{pgfplots}
+\usepackage{tikz}
+\usepackage{siunitx}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{fontawesome5}
+\usepackage{placeins}
+
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, decorations.markings, patterns, fit, backgrounds}
+\usepgfplotslibrary{groupplots}
+\pgfplotsset{compat=1.18}
+
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Sph}{\mathbb{S}}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator{\logsumexp}{LogSumExp}
+\DeclareMathOperator{\logdet}{logdet}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\Cov}{Cov}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\Corr}{Corr}
+\DeclareMathOperator{\sg}{sg}
+
+\newcommand\figref{Figure~\ref}
+\renewcommand\eqref{Equation~\ref}
+\newcommand\tabref{Table~\ref}
+\newcommand*{\secref}[1]{\hyperref[{#1}]{\S\ref*{#1}}}
+
+\title{What Does Feature Norm Encode in\\
+Flat-Space Self-Supervised Learning?}
+
+\author{%
+    \href{https://orcid.org/0000-0002-7227-4946}{\includegraphics[scale=0.06]{orcid.pdf}\hspace{1mm}Shreeyam Kacker} \\
+    Department of Aeronautics and Astronautics\\
+    MIT\\
+    \texttt{shreeyam@mit.edu}
+}
+
+\renewcommand{\headeright}{}
+\renewcommand{\undertitle}{}
+\renewcommand{\shorttitle}{Norm as Confidence in Flat-Space SSL}
+
+\hypersetup{%
+    pdftitle={What Does Feature Norm Encode in Flat-Space Self-Supervised Learning?},
+    pdfsubject={cs.CV, cs.LG},
+    pdfauthor={Shreeyam Kacker},
+    pdfkeywords={self-supervised learning, feature norm, out-of-distribution detection, representation geometry}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We investigate a geometric property of self-supervised representations trained
+with a flat-Gaussian objective---alignment loss plus a correlation-rate
+regularizer and a two-sided variance penalty---and find that the $L_2$ norm of
+a learned embedding empirically tracks the model's prediction confidence. On
+CIFAR-10, $k$-NN accuracy rises from $44\%$ for low-norm features to $92\%$
+for high-norm features; mean feature norm correlates almost perfectly
+($r = 0.99$) with distance from the class centroid. When inputs are linearly
+mixed with uniform noise, the embedding contracts radially toward the origin,
+and pure-noise inputs collapse into a $\sim 12$-dimensional subspace
+(vs.\ $\sim 237$ for real images) oriented roughly orthogonal to all class
+directions. None of this was trained for: no labels, no confidence
+supervision, no out-of-distribution (OOD) examples. By contrast, the publicly
+available spherical-SSL model DINOv2 exhibits the \emph{opposite} pattern on
+the same stimuli---feature norm \emph{grows} with noise fraction---suggesting
+that the phenomenon is specific to the flat-Gaussian geometry rather than a
+generic consequence of joint-embedding SSL. We draw connections to MagFace,
+energy-based OOD detection, and dimensional collapse, and discuss implications
+for using feature norm as a free confidence signal at test time.
+\end{abstract}
+
+\noindent\textbf{Keywords:} self-supervised learning, feature norm, out-of-distribution detection, representation geometry
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/method}
+\input{sections/experiments}
+
+\FloatBarrier
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

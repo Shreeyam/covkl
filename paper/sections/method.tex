@@ -1,0 +1,81 @@
+\section{Method}
+\label{sec:method}
+
+Our goal is to learn an encoder $f_\theta : \mathcal{X} \to \R^d$ such that features $\vect{z} = f_\theta(x) \in \R^d$ (i) are view-invariant (two augmentations of the same image produce similar features), (ii) have approximately unit variance along each coordinate, and (iii) have approximately uncorrelated coordinates---i.e., the batch feature distribution approximates $\mathcal{N}(\vect{0}, \mat{I})$. We do not $\ell_2$-normalize the output.
+
+\subsection{Architecture}
+
+The encoder is a standard backbone (ResNet-18 \citep{he2016resnet} in our experiments, with the $7\times 7$ stride-2 stem replaced by a $3\times 3$ stride-1 conv and the initial maxpool removed, as is standard for CIFAR-scale inputs) followed by a three-layer MLP projection head:
+\begin{equation}
+    f_\theta(x) = h \circ g(x), \qquad h : \R^{d_\text{emb}} \to \R^d,
+\end{equation}
+where $g$ produces a $d_\text{emb}$-dimensional feature ($d_\text{emb} = 512$ for ResNet-18) and $h$ is Linear--BN--GELU--Linear--BN--GELU--Linear. Unlike DINO \citep{caron2021emerging}, there is no final $\ell_2$ normalization and no weight-normalized prototype layer: the output $\vect{z} \in \R^d$ with $d = 256$ is the feature we study. A teacher network $f_{\bar{\theta}}$ is maintained as an exponential moving average of the student with cosine schedule from $\alpha_0 = 0.99$ to $1$.
+
+\subsection{Loss}
+
+For each input image $x$ we generate two augmented views $v_1, v_2$ (random resized crop, horizontal flip, color jitter, grayscale) and compute student features $\vect{s}_i = f_\theta(v_i)$ and teacher features $\vect{t}_i = f_{\bar\theta}(v_i)$. The total loss combines three terms.
+
+\paragraph{Cross-view alignment.} A squared-Euclidean loss between student features on one view and stop-gradient teacher features on the other:
+\begin{equation}
+    \mathcal{L}_\text{align} = \tfrac{1}{2}\bigl(\|\vect{s}_1 - \sg(\vect{t}_2)\|^2 + \|\vect{s}_2 - \sg(\vect{t}_1)\|^2\bigr).
+\end{equation}
+This is the minimalist alignment objective of SimDINO \citep{wu2025simdino}, differing from the original DINO cross-entropy in dropping the softmax, centering, sharpening, and high-dimensional prototype head.
+
+\paragraph{Correlation-rate expansion.} Left to itself, $\mathcal{L}_\text{align}$ admits the trivial optimum $f_\theta \equiv \vect{c}$ (collapse). To prevent collapse we maximize the coding rate \citep{ma2007segmentation, yu2020mcr2} of the batch feature covariance. However, coding rate on the raw covariance is scale-sensitive: as features grow in magnitude, the coding rate grows unboundedly, destabilizing training \citep{kacker2025correlation_rate}. We therefore use the coding rate of the \emph{correlation} matrix. Let $\mat{Z} \in \R^{n \times d}$ be the stacked batch features and $\hat{\mat{Z}} = \mat{Z} \oslash \sigma(\mat{Z})$ the per-dimension-standardized version. The correlation rate is
+\begin{equation}
+\label{eq:corr_rate}
+    R_\varepsilon(\hat{\mat{Z}}) = \tfrac{1}{2}\logdet\!\left(\mat{I}_d + \tfrac{d}{n \varepsilon^2}\, \hat{\mat{Z}}^\top \hat{\mat{Z}}\right),
+\end{equation}
+which is scale-invariant: multiplying $\mat{Z}$ by any positive constant leaves $\hat{\mat{Z}}$ and hence $R_\varepsilon$ unchanged. The correlation-rate term in the loss is $-\gamma R_\varepsilon(\hat{\mat{Z}})$, with coefficient $\gamma > 0$.
+
+\paragraph{Two-sided variance regularization (SigReg).} Because $R_\varepsilon$ is scale-invariant, nothing in the loss so far anchors the feature scale. We add a two-sided penalty on the per-dimension standard deviation, pinning it to one on both sides \citep{schaeffer2024sigreg}:
+\begin{equation}
+    \mathcal{L}_\text{sig} = \frac{1}{d} \sum_{j=1}^{d} \bigl(\sigma_j(\mat{Z}) - 1\bigr)^2,
+\end{equation}
+where $\sigma_j(\mat{Z})$ is the sample standard deviation of feature dimension $j$ across the batch. Note this differs from the ReLU hinge $\max(0, 1 - \sigma_j)$ used in VICReg \citep{bardes2022vicreg}: VICReg's hinge vanishes once $\sigma_j \ge 1$, leaving the feature magnitude unbounded above, whereas $\mathcal{L}_\text{sig}$ actively constrains $\sigma_j$ from both directions.
+
+\paragraph{Total loss.}
+\begin{equation}
+\label{eq:loss}
+    \mathcal{L} = \mathcal{L}_\text{align} + w_\text{sig}\, \mathcal{L}_\text{sig} - \gamma\, R_\varepsilon(\hat{\mat{Z}}),
+\end{equation}
+with $w_\text{sig} = 1$, $\gamma = 10^{-3}$, and $\varepsilon = 0.5$ in all experiments below. The three coefficients were selected on a preliminary sweep (reported in \secref{sec:experiments}); accuracy is essentially insensitive to $\varepsilon \in [0.1, 1.0]$ and $\gamma \in [3 \cdot 10^{-4}, 3 \cdot 10^{-3}]$, and weakly sensitive to $w_\text{sig}$.
+
+\subsection{Connection to Covariance KL}
+\label{sec:covkl}
+
+The objective \eqref{eq:loss} separates scale (via $\mathcal{L}_\text{sig}$) from correlation structure (via $R_\varepsilon$). It is instructive to compare this split against a single basis-free term that captures both at once: the KL divergence of the batch-feature second-order moment to $\mathcal{N}(\vect{0}, \mat{I}_d)$. Let $\mat{C} = \tfrac{1}{n}\tilde{\mat{Z}}^\top \tilde{\mat{Z}}$ be the batch covariance of centered features, with a small shrinkage $\mat{C}_\rho = (1-\rho)\mat{C} + \rho \mat{I}$ for numerical stability. The covariance-KL objective is
+\begin{equation}
+\label{eq:covkl}
+    \mathcal{L}_\text{covKL} \;=\; \tfrac{1}{2}\Bigl(\tr(\mat{C}_\rho) \;-\; \logdet(\mat{C}_\rho) \;-\; d\Bigr)
+    \;=\; \mathrm{KL}\!\left(\mathcal{N}(\vect{0}, \mat{C}_\rho) \,\big\|\, \mathcal{N}(\vect{0}, \mat{I}_d)\right).
+\end{equation}
+Writing $\mat{C} = \mat{D}^{1/2}\mat{R}\mat{D}^{1/2}$ with $\mat{D} = \diag(\sigma_1^2, \dots, \sigma_d^2)$ and $\mat{R}$ the correlation matrix, the scale and structure pieces decompose cleanly:
+\begin{equation}
+\label{eq:covkl_decomp}
+    \tr(\mat{C}) - \logdet(\mat{C}) - d
+    \;=\; \underbrace{\sum_{j=1}^{d}\bigl(\sigma_j^2 - 2\log\sigma_j - 1\bigr)}_{\text{diagonal (scale)}} \;-\; \underbrace{\logdet(\mat{R})}_{\text{off-diagonal (decorrelation)}}.
+\end{equation}
+
+Our current objective~\eqref{eq:loss} is an \emph{approximation} to each side of this decomposition. Two local discrepancies and two global ones are worth noting.
+
+\paragraph{Scale term: $(\sigma_j - 1)^2$ vs.~$\sigma_j^2 - 2\log\sigma_j - 1$.}
+Near $\sigma_j = 1$ the two agree at leading order: a Taylor expansion gives $\sigma_j^2 - 2\log\sigma_j - 1 = 2(\sigma_j - 1)^2 + O\!\bigl((\sigma_j - 1)^3\bigr)$, so $\mathcal{L}_\text{sig}$ is our $(\sigma_j-1)^2$ up to a factor of two. They differ asymptotically: the KL form has a $-\log\sigma_j$ barrier that diverges as $\sigma_j \to 0$, providing a stronger repulsion from per-dimension collapse, and grows sub-quadratically (rather than quadratically) as $\sigma_j \to \infty$, which is less aggressive on directions that want variance slightly above one.
+
+\paragraph{Structure term: $\tfrac{1}{2}\logdet\!\bigl(\mat{I}_d + (d/\varepsilon^2)\mat{R}\bigr)$ vs.~$-\logdet\mat{R}$.}
+The correlation-rate expansion inherits its form from coding rate~\citep{yu2020mcr2, wu2025simdino}: the $\mat{I}_d + (d/\varepsilon^2)\mat{R}$ regularization was originally motivated by an additive-noise rate-distortion bound, not as a Gaussian match. It is bounded even as $\mat{R}$ becomes singular: if $\lambda_i(\mat{R}) \to 0$, the corresponding factor $1 + (d/\varepsilon^2)\lambda_i \to 1$ is finite, so the gradient resisting near-singular directions is $O(d/\varepsilon^2)$---large but bounded. In contrast, $-\logdet\mat{R}$ diverges as $\lambda_i \to 0^+$, giving an unbounded barrier against directional collapse. Both have an optimum at $\mat{R} = \mat{I}$ under the constraint $\tr(\mat{R}) = d$, but their off-optimum shapes differ: the coding-rate form is a soft expansion pressure, while $-\logdet$ is a hard anti-collapse barrier.
+
+\paragraph{Global behavior.}
+$\mathcal{L}_\text{covKL}$ has a unique minimum at $\mat{C} = \mat{I}_d$, whereas a coding-rate expansion has \emph{no minimum}---its gradient monotonically rewards spread, so the scale must be anchored by a separate term (as we do with $\mathcal{L}_\text{sig}$). This separation has a practical cost: $R_\varepsilon$ operates on standardized features and is therefore blind to the scale the rest of the loss is fighting over, forcing $\mathcal{L}_\text{sig}$ to clean up afterward. The covariance-KL form conflates the two in the natural way: $\tr(\mat{C})$ alone pushes scale down, $-\logdet(\mat{C})$ alone pushes spread up, and equilibrium is at $\mat{C} = \mat{I}$.
+
+We report experiments with the decomposed objective in~\eqref{eq:loss} for continuity with the correlation-rate literature and because the geometric findings of~\secref{sec:experiments} do not depend sensitively on the exact scale term. A clean covariance-KL ablation---replacing $R_\varepsilon - w_\text{sig}\mathcal{L}_\text{sig}$ with a single $\mathcal{L}_\text{covKL}$ term plus an explicit mean penalty $\lambda_\mu \|\bar{\vect{z}}\|^2$---is a natural next step; we leave a systematic comparison to future work.
+
+\subsection{Rationale for the Three Terms}
+
+The three terms play distinct geometric roles:
+\begin{itemize}
+    \item $\mathcal{L}_\text{align}$ pulls features of different views of the same image together (\emph{alignment}).
+    \item $R_\varepsilon$, operating on the correlation matrix, pushes the off-diagonal entries of the correlation toward zero, which makes the batch feature distribution factorize across dimensions (\emph{decorrelation}).
+    \item $\mathcal{L}_\text{sig}$ pins the per-dimension scale to one (\emph{variance control}).
+\end{itemize}
+At convergence, the batch features approximate $\mathcal{N}(\vect{0}, \mat{I}_d)$---zero mean by the symmetry of the optimization, unit per-dimension variance by $\mathcal{L}_\text{sig}$, uncorrelated dimensions by $R_\varepsilon$. The per-sample position within this distribution is unconstrained beyond alignment with the teacher, and it is in this residual freedom---particularly the radial coordinate---that the confidence-like structure we document in \secref{sec:experiments} emerges.
