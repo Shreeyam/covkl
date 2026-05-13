@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "covkl"
+version = "0.1.0"
+description = "Gaussian-KL covariance matching for self-supervised learning on CIFAR-10."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Shreeyam Kacker" }]
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "numpy>=1.23",
+    "matplotlib>=3.6",
+    "tensorboard>=2.10",
+]
+
+[project.optional-dependencies]
+plots = ["umap-learn>=0.5", "scienceplots>=2.0"]
+
+[tool.setuptools.packages.find]
+include = ["covkl*"]
