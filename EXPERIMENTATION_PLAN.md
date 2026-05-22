@@ -184,7 +184,8 @@ Suggested KL-family grid:
 | SymKL | `lam_align in {12.5, 25, 50}`, `lam_skl in {0.002, 0.005, 0.01, 0.02}`, `rho in {1e-3, 1e-2, 5e-2}` |
 
 These are exposed directly as CLI overrides: `--lam-align`, `--lam-covkl`,
-`--lam-rkl`, `--lam-skl`, and `--rho`.
+`--lam-rkl`, `--lam-skl`, and `--rho`. Keep `--lam-mu 0` for this stage so
+the main sweep isolates covariance geometry.
 
 Baselines should use fixed paper-style defaults rather than being tuned as part
 of the main claim:
@@ -197,11 +198,47 @@ of the main claim:
 Run Stage 1 KL-family configs with seed `0`. Keep top 3 KL configs per method by
 best kNN. Carry the fixed VICReg and Barlow recipes as reference baselines.
 
-## Stage 2: Projector Capacity Sweep
+## Stage 2: Mean-Term Ablation
+
+Purpose: test whether first-moment control helps after the covariance objective
+has already been tuned.
+
+Use only the best Stage 1 config for each KL-family method:
+
+- best `CovKL`
+- best `RevKL`
+- best `SymKL`
+
+Sweep a shared isotropic mean penalty:
+
+| Parameter | Values |
+| --- | --- |
+| `lam_mu` | `0, 0.1, 1.0` |
+
+Use the same mean penalty for all KL directions:
+
+```text
+L_mu = mean(mu^2)
+```
+
+Do not use direction-specific exact Gaussian mean terms in the main experiment.
+The exact reverse/symmetric terms introduce `C^{-1}` into the mean penalty and
+would confound this ablation with an additional conditioning/stability variable.
+
+CLI flag:
+
+```bash
+--lam-mu 0.1
+```
+
+Selection rule: if nonzero `lam_mu` clearly improves a KL method, carry the best
+`lam_mu` into later stages for that method. Otherwise keep `lam_mu=0`.
+
+## Stage 3: Projector Capacity Sweep
 
 Purpose: test whether KL-family gains persist under matched projector capacity.
 
-Use the best Stage 1 config for each method. Sweep:
+Use the best Stage 1/2 config for each method. Sweep:
 
 | Parameter | Values |
 | --- | --- |
@@ -233,11 +270,11 @@ best kNN versus projector parameter count
 The paper needs this because covariance losses act directly in projector space.
 If KL methods only win at one head size, the result is less convincing.
 
-## Stage 3: Seed Repeats on CIFAR-10
+## Stage 4: Seed Repeats on CIFAR-10
 
 Purpose: estimate variance for the final CIFAR-10 table.
 
-Take the best projector and loss config per method from Stages 1-2. Run:
+Take the best projector and loss config per method from Stages 1-3. Run:
 
 ```text
 seeds = 0, 1, 2
@@ -252,7 +289,7 @@ Report:
 - best epoch mean/std
 - wall-clock time per epoch
 
-## Stage 4: CIFAR-100 Transfer
+## Stage 5: CIFAR-100 Transfer
 
 Purpose: test whether the tuned recipes survive a harder same-resolution
 dataset.
@@ -277,7 +314,7 @@ If all KL-family methods degrade badly, run a small CIFAR-100-only LR and
 regularization sweep. Otherwise keep the CIFAR-10-selected recipes for a cleaner
 transfer story.
 
-## Stage 5: ImageNet-100 Scale Check
+## Stage 6: ImageNet-100 Scale Check
 
 Purpose: show the objective is not CIFAR-specific.
 
@@ -296,7 +333,7 @@ Recommended setup:
 - batch size: maximize within memory, but keep fixed across methods
 - seeds: `0, 1, 2` if feasible; otherwise seed `0` plus a note that this is a scale check
 
-## Stage 6: Spectral Diagnostics
+## Stage 7: Spectral Diagnostics
 
 Purpose: directly test the paper's spectral claims.
 
@@ -368,11 +405,12 @@ If compute is limited, use this order:
 1. Validate dataset/projector/seed/result-summary support.
 2. Smoke test all datasets.
 3. CIFAR-10 Stage 1 hyperparameter sweep.
-4. CIFAR-10 Stage 2 projector sweep for top methods.
-5. CIFAR-10 3-seed repeats.
-6. CIFAR-100 3-seed repeats.
-7. ImageNet-100 scale check.
-8. Spectral diagnostics and paper figures.
+4. CIFAR-10 Stage 2 mean-term ablation on best KL configs.
+5. CIFAR-10 Stage 3 projector sweep for top methods.
+6. CIFAR-10 3-seed repeats.
+7. CIFAR-100 3-seed repeats.
+8. ImageNet-100 scale check.
+9. Spectral diagnostics and paper figures.
 
 ## Minimal Final Experimental Claim
 

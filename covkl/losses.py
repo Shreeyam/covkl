@@ -124,7 +124,7 @@ def covkl_hinge_split_loss(
 
 
 @register("symkl")
-def symkl_loss(s1, s2, *, lam_align=25.0, lam_skl=0.01, rho=1e-2, **_):
+def symkl_loss(s1, s2, *, lam_align=25.0, lam_skl=0.01, lam_mu=0.0, rho=1e-2, **_):
     """Symmetric KL (Jeffreys) covariance matching: ½(tr C + tr C⁻¹ - 2D)/D."""
     loss_pred = F.mse_loss(s1, s2)
 
@@ -133,15 +133,19 @@ def symkl_loss(s1, s2, *, lam_align=25.0, lam_skl=0.01, rho=1e-2, **_):
         D = C_rho.shape[0]
         tr_C = torch.diagonal(C_rho).sum()
         tr_Cinv = torch.diagonal(torch.linalg.inv(C_rho)).sum()
-        return 0.5 * (tr_C + tr_Cinv - 2 * D) / D
+        skl = 0.5 * (tr_C + tr_Cinv - 2 * D) / D
+        return skl, (z.mean(dim=0) ** 2).mean()
 
-    L_skl = (per_view(s1) + per_view(s2)) / 2
-    loss = lam_align * loss_pred + lam_skl * L_skl
-    return loss, {"prediction": loss_pred, "variance": L_skl, "decorrelation": _zero_like(loss_pred)}
+    skl1, mu1 = per_view(s1)
+    skl2, mu2 = per_view(s2)
+    L_skl = (skl1 + skl2) / 2
+    L_mu = (mu1 + mu2) / 2
+    loss = lam_align * loss_pred + lam_skl * L_skl + lam_mu * L_mu
+    return loss, {"prediction": loss_pred, "variance": L_skl, "decorrelation": L_mu}
 
 
 @register("revkl")
-def revkl_loss(s1, s2, *, lam_align=25.0, lam_rkl=0.01, rho=1e-2, **_):
+def revkl_loss(s1, s2, *, lam_align=25.0, lam_rkl=0.01, lam_mu=0.0, rho=1e-2, **_):
     """Reverse Gaussian-KL (KL(q‖p), q=N(0,I)): ½(tr C⁻¹ + logdet C - D)/D.
 
     Inverse-eigenvalue barrier on the collapse side; only log growth on the
@@ -154,11 +158,15 @@ def revkl_loss(s1, s2, *, lam_align=25.0, lam_rkl=0.01, rho=1e-2, **_):
         D = C_rho.shape[0]
         tr_Cinv = torch.diagonal(torch.linalg.inv(C_rho)).sum()
         _, logabsdet = torch.linalg.slogdet(C_rho)
-        return 0.5 * (tr_Cinv + logabsdet - D) / D
+        rkl = 0.5 * (tr_Cinv + logabsdet - D) / D
+        return rkl, (z.mean(dim=0) ** 2).mean()
 
-    L_rkl = (per_view(s1) + per_view(s2)) / 2
-    loss = lam_align * loss_pred + lam_rkl * L_rkl
-    return loss, {"prediction": loss_pred, "variance": L_rkl, "decorrelation": _zero_like(loss_pred)}
+    rkl1, mu1 = per_view(s1)
+    rkl2, mu2 = per_view(s2)
+    L_rkl = (rkl1 + rkl2) / 2
+    L_mu = (mu1 + mu2) / 2
+    loss = lam_align * loss_pred + lam_rkl * L_rkl + lam_mu * L_mu
+    return loss, {"prediction": loss_pred, "variance": L_rkl, "decorrelation": L_mu}
 
 
 # ---------------------------------------------------------------------------

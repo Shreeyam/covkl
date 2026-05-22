@@ -137,6 +137,7 @@ def _apply_overrides(config: dict, args: argparse.Namespace) -> dict:
         "weight_decay": args.weight_decay,
         "rho": args.rho,
         "lam_align": args.lam_align,
+        "lam_mu": args.lam_mu,
         "lam_covkl": args.lam_covkl,
         "lam_rkl": args.lam_rkl,
         "lam_skl": args.lam_skl,
@@ -253,6 +254,7 @@ def main():
     parser.add_argument("--weight-decay", type=float, default=None)
     parser.add_argument("--rho", type=float, default=None)
     parser.add_argument("--lam-align", type=float, default=None)
+    parser.add_argument("--lam-mu", type=float, default=None)
     parser.add_argument("--lam-covkl", type=float, default=None)
     parser.add_argument("--lam-rkl", type=float, default=None)
     parser.add_argument("--lam-skl", type=float, default=None)
