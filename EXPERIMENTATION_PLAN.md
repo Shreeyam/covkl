@@ -243,15 +243,14 @@ Use the best Stage 1/2 config for each method. Sweep:
 | Parameter | Values |
 | --- | --- |
 | `projector_depth` | `1, 2, 3, 4` |
-| `projector_hidden_dim` | `512, 1024, 2048` |
+| `projector_hidden_dim` | `64, 128, 256, 512, 1024, 2048` |
 | `embed_dim` | `128, 256, 512` |
 
-Do not run the full Cartesian product initially if compute is tight. A good
-reduced design is:
+Run the full Cartesian product. This is 72 projector settings per method:
 
-1. Width sweep at fixed `depth=3`, `embed_dim=256`.
-2. Depth sweep at best width, fixed `embed_dim=256`.
-3. Output-dim sweep at best depth/width.
+```text
+4 depths x 6 widths x 3 output dimensions
+```
 
 Methods to include:
 
