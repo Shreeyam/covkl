@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import os
+import random
+import time
 from typing import Optional
 
 import numpy as np
@@ -11,7 +13,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from covkl.data import build_loaders
+from covkl.data import build_loaders, num_classes_for_dataset
 from covkl.eval import eval_knn, extract_features
 from covkl.losses import NEEDS_TEACHER, compute_loss
 from covkl.models import build_encoder
@@ -25,6 +27,10 @@ def train_and_eval(
     n_epochs: int = 50,
     batch_size: int = 256,
     num_workers: int = 4,
+    dataset: str = "cifar10",
+    image_size: Optional[int] = None,
+    eval_batch_size: int = 1024,
+    seed: Optional[int] = None,
     name: str = "run",
     log_dir: str = "./runs/mini",
     ckpt_dir: str = "./checkpoints/mini",
@@ -37,15 +43,30 @@ def train_and_eval(
     Returns a history dict with ``loss``, ``knn_acc``, ``epoch_knn``,
     ``final_features``, ``labels``, and ``early_stopped``.
     """
+    if seed is not None:
+        set_seed(seed)
+    started_at = time.time()
     writer = SummaryWriter(log_dir=os.path.join(log_dir, name))
     train_loader, eval_train_loader, eval_test_loader = build_loaders(
-        data_root, batch_size=batch_size, num_workers=num_workers,
+        data_root,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        dataset=dataset,
+        image_size=image_size,
+        eval_batch_size=eval_batch_size,
+        seed=seed,
     )
 
     method = config.get("method", "covkl")
     embed_dim = config.get("embed_dim", 256)
     arch = config.get("arch", "smallconv")
-    student = build_encoder(arch, embed_dim).to(device)
+    student = build_encoder(
+        arch,
+        embed_dim,
+        projector_depth=config.get("projector_depth", 3),
+        projector_hidden_dim=config.get("projector_hidden_dim"),
+        projector_bn=config.get("projector_bn", True),
+    ).to(device)
 
     use_teacher = method in NEEDS_TEACHER
     if use_teacher:
@@ -62,9 +83,17 @@ def train_and_eval(
     ema_decay_start = config.get("ema_decay", 0.996)
     grad_clip = config.get("grad_clip", 3.0)
 
-    history = {"loss": [], "knn_acc": [], "epoch_knn": [], "early_stopped": False}
+    history = {
+        "loss": [],
+        "knn_acc": [],
+        "epoch_knn": [],
+        "early_stopped": False,
+        "epochs_completed": 0,
+        "wall_time_sec": 0.0,
+    }
     total_steps = n_epochs * len(train_loader)
     step = 0
+    num_classes = num_classes_for_dataset(dataset)
 
     for epoch in range(n_epochs):
         student.train()
@@ -111,7 +140,10 @@ def train_and_eval(
 
         is_eval = (epoch + 1) % knn_every == 0 or epoch == 0
         if is_eval:
-            knn_acc = eval_knn(student, eval_train_loader, eval_test_loader, device)
+            knn_acc = eval_knn(
+                student, eval_train_loader, eval_test_loader, device,
+                num_classes=num_classes,
+            )
             history["knn_acc"].append(knn_acc)
             history["epoch_knn"].append(epoch + 1)
             writer.add_scalar("eval/knn_accuracy", knn_acc, epoch + 1)
@@ -133,14 +165,18 @@ def train_and_eval(
         if (epoch + 1) % ckpt_every == 0:
             _save_ckpt(ckpt_dir, f"{name}_ep{epoch+1}.pth", student, teacher, config, epoch + 1)
 
+    history["epochs_completed"] = epoch + 1
     _save_ckpt(
         ckpt_dir, f"{name}.pth", student, teacher, config, epoch + 1,
-        history={k: history[k] for k in ("loss", "knn_acc", "epoch_knn")},
+        history={k: history[k] for k in (
+            "loss", "knn_acc", "epoch_knn", "early_stopped", "epochs_completed",
+        )},
     )
 
     features, labels = extract_features(student, eval_test_loader, device)
     history["final_features"] = features
     history["labels"] = labels
+    history["wall_time_sec"] = time.time() - started_at
     writer.close()
     return history
 
@@ -171,3 +207,11 @@ def select_device(prefer: str = "auto") -> str:
     if torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)

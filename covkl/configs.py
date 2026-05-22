@@ -8,12 +8,6 @@ sub-directory) to a config dict. The config dict is passed straight to
 from __future__ import annotations
 
 
-def _sim(**overrides):
-    base = dict(method="simdino", lr=1e-3, ema_decay=0.99,
-                cr_eps=0.5, gamma=1.0, w_sigreg=5.0)
-    return {**base, **overrides}
-
-
 CONFIGS: dict[str, dict] = {
     # ------------------------------------------------------------------
     # CovKL family (this paper)
@@ -64,7 +58,6 @@ CONFIGS: dict[str, dict] = {
     # ------------------------------------------------------------------
     # Baselines
     # ------------------------------------------------------------------
-    "SimDINO_rn18_long": _sim(gamma=1e-3, w_sigreg=1.0, arch="resnet18"),
     "VICReg_rn18": dict(method="vicreg", lr=1e-3, arch="resnet18",
                         lam_invar=25.0, lam_var=25.0, lam_cov=1.0),
     "Barlow_rn18": dict(method="barlow", lr=1e-3, arch="resnet18",

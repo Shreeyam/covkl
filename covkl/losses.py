@@ -17,7 +17,7 @@ import torch.nn.functional as F
 
 LossFn = Callable[..., Tuple[torch.Tensor, Dict[str, torch.Tensor]]]
 LOSSES: Dict[str, LossFn] = {}
-NEEDS_TEACHER = {"simdino"}
+NEEDS_TEACHER: set[str] = set()
 
 
 def register(name: str):
@@ -202,32 +202,6 @@ def barlow_loss(s1, s2, *, lam_bt=5e-3, **_):
     off_diag = (off ** 2).sum()
     loss = on_diag + lam_bt * off_diag
     return loss, {"prediction": on_diag, "variance": _zero_like(on_diag), "decorrelation": off_diag}
-
-
-@register("simdino")
-def simdino_loss(
-    s1, s2, *, t1, t2, cr_eps=0.5, gamma=1.0, w_sigreg=5.0, **_,
-):
-    """SimDINO-style: cross-view MSE + correlation-rate maximisation + SigReg.
-
-    Requires a teacher (``NEEDS_TEACHER``); ``t1``/``t2`` are detached teacher
-    embeddings of the two views.
-    """
-    loss_pred = 0.5 * (F.mse_loss(s1, t2.detach()) + F.mse_loss(s2, t1.detach())) / 2
-
-    feats = torch.cat([s1, s2], dim=0)
-    N, D = feats.shape
-    centered = feats - feats.mean(dim=0)
-    std_per_dim = centered.std(dim=0, unbiased=False) + 1e-4
-    normed = centered / std_per_dim
-    corr = (normed.T @ normed) / N
-    I_D = torch.eye(D, device=feats.device, dtype=feats.dtype)
-    _, logabsdet = torch.linalg.slogdet(I_D + (D / cr_eps ** 2) * corr)
-    R_corr = 0.5 * logabsdet
-
-    loss_sigreg = torch.mean((std_per_dim - 1.0) ** 2)
-    loss = loss_pred + w_sigreg * loss_sigreg - gamma * R_corr
-    return loss, {"prediction": loss_pred, "variance": loss_sigreg, "decorrelation": -R_corr}
 
 
 def compute_loss(method: str, s1, s2, *, t1=None, t2=None, **kwargs):

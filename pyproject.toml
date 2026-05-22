@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.23",
     "matplotlib>=3.6",
     "tensorboard>=2.10",
+    "datasets>=2.16",
 ]
 
 [project.optional-dependencies]

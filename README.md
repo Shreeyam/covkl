@@ -11,8 +11,7 @@ $$\mathcal{L}_{\text{CovKL}}(C) = \tfrac{1}{2D}\bigl(\operatorname{tr}(C) - \log
 Per-eigenvalue this is `½ (λ - log λ - 1)`, an asymmetric barrier that
 prevents collapse logarithmically and penalises over-expansion linearly.
 Alongside CovKL the package implements its hinge, split, symmetric- and
-reverse-KL variants, plus VICReg, Barlow Twins, and a SimDINO-style
-baseline.
+reverse-KL variants, plus VICReg and Barlow Twins baselines.
 
 ## Install
 
@@ -54,11 +53,10 @@ bar chart go to `./results/sweep/`.
 | `revkl`                       | Reverse KL: `½ (tr C⁻¹ + log det C - D) / D`.                     |
 | `vicreg`                      | VICReg (Bardes et al. 2022).                                      |
 | `barlow`                      | Barlow Twins (Zbontar et al. 2021).                               |
-| `simdino`                     | Correlation-rate + SigReg with an EMA teacher (SimDINO-style).    |
 
-All methods share the same backbone (`resnet18` adapted for 32×32, or
-`smallconv`), the same two-view CIFAR-10 augmentation pipeline
-(`covkl.data.MultiCropCIFAR`), and the same AdamW + cosine schedule.
+All methods share the same backbone family (`resnet18` adapted for 32×32,
+`resnet18_imagenet` for larger ImageNet-style inputs, or `smallconv`), the
+same two-view augmentation pipeline, and the same AdamW + cosine schedule.
 
 ## Layout
 
@@ -66,7 +64,7 @@ All methods share the same backbone (`resnet18` adapted for 32×32, or
 covkl/
   __init__.py
   models.py     # ResNet18CIFAR, SmallConvNet, build_encoder
-  data.py       # MultiCropCIFAR, build_loaders
+  data.py       # two-view transforms and build_loaders
   losses.py     # registry of SSL losses (compute_loss / LOSSES)
   train.py      # train_and_eval, select_device
   eval.py       # kNN evaluation and feature extraction
